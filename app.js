@@ -1,53 +1,7 @@
-const storageKey = "zfl18-boardgame-rule-cards";
-const today = new Date();
+// 页面接入层
+// 负责渲染和事件，把扩展资料层（expansion-data.js）和计算规则层（expansion-calc.js）接到页面上。
 
-const defaultState = {
-  selectedId: "",
-  games: [
-    {
-      id: crypto.randomUUID(),
-      name: "奥尔良",
-      minPlayers: 2,
-      maxPlayers: 4,
-      duration: 90,
-      complexity: "中",
-      lastPlayed: "2025-11-20",
-      cover: "",
-      forgets: ["商站建造前先确认道路或水路连接", "袋中随从抽完后不是重洗弃堆，而是从已回袋内容继续抽"],
-      disputes: ["事件顺序和玩家动作结算先后", "科技板是否能替代所有同类随从"],
-      setup: ["按人数放置货物板块", "每位玩家拿起始随从、商人和个人板"],
-      scoring: ["货物分数", "商站和市民乘区块", "金币和建筑剩余加分"]
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "盖亚计划",
-      minPlayers: 1,
-      maxPlayers: 4,
-      duration: 150,
-      complexity: "重",
-      lastPlayed: "2025-08-02",
-      cover: "",
-      forgets: ["联邦连接时卫星数量和能量消耗要一起核对", "研究升到顶必须拿对应科技板限制"],
-      disputes: ["被动充能是否能拒绝", "星球改造费用受哪些能力影响"],
-      setup: ["随机终局计分板和回合得分板", "按种族设置起始资源和母星"],
-      scoring: ["终局计分板", "科技轨排名", "联邦和建筑分"]
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "花砖物语",
-      minPlayers: 2,
-      maxPlayers: 4,
-      duration: 45,
-      complexity: "轻",
-      lastPlayed: "2026-03-15",
-      cover: "",
-      forgets: ["每轮结束先铺墙再补工厂展示区", "地板线扣分后清空对应砖"],
-      disputes: ["同色砖放置限制是否看整面墙", "中央区起始玩家标记是否必须拿"],
-      setup: ["按人数放工厂圆盘", "每个圆盘补4块砖"],
-      scoring: ["横竖相邻即时分", "完整行列和颜色终局加分"]
-    }
-  ]
-};
+const today = new Date();
 
 let state = loadState();
 if (!state.selectedId) state.selectedId = state.games[0]?.id || "";
@@ -70,30 +24,23 @@ const els = {
   gameCount: document.querySelector("#gameCount"),
   ruleCount: document.querySelector("#ruleCount"),
   staleGame: document.querySelector("#staleGame"),
+  fitLabel: document.querySelector("#fitLabel"),
+  fitCount: document.querySelector("#fitCount"),
   visibleCount: document.querySelector("#visibleCount")
 };
-
-function loadState() {
-  const saved = localStorage.getItem(storageKey);
-  if (!saved) return structuredClone(defaultState);
-  try {
-    return { ...structuredClone(defaultState), ...JSON.parse(saved) };
-  } catch {
-    return structuredClone(defaultState);
-  }
-}
-
-function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
-}
 
 function daysSince(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
   return Math.max(0, Math.floor((today - date) / 86400000));
 }
 
-function getAllRules(game) {
-  return [...game.forgets, ...game.disputes, ...game.setup, ...game.scoring];
+function getSearchText(game) {
+  return [
+    game.name,
+    ...getBaseRules(game),
+    ...(game.expansions || []).flatMap((exp) => [exp.name, ...(exp.rules || [])]),
+    ...(game.pendingRules || [])
+  ].join("");
 }
 
 function getFilteredGames() {
@@ -101,9 +48,8 @@ function getFilteredGames() {
   const player = els.playerFilter.value;
   const complexity = els.complexityFilter.value;
   const games = state.games.filter((game) => {
-    const text = `${game.name}${getAllRules(game).join("")}`;
-    const matchesKeyword = !keyword || text.includes(keyword);
-    const matchesPlayer = player === "all" || (Number(player) >= game.minPlayers && Number(player) <= game.maxPlayers);
+    const matchesKeyword = !keyword || getSearchText(game).includes(keyword);
+    const matchesPlayer = player === "all" || isPlayerCountCompatible(game, Number(player));
     const matchesComplexity = complexity === "all" || game.complexity === complexity;
     return matchesKeyword && matchesPlayer && matchesComplexity;
   });
@@ -117,11 +63,16 @@ function getFilteredGames() {
 }
 
 function renderSummary() {
-  const allRuleCount = state.games.reduce((sum, game) => sum + getAllRules(game).length, 0);
+  const allRuleCount = state.games.reduce((sum, game) => sum + getCountableRules(game).length, 0);
   const stale = [...state.games].sort((a, b) => daysSince(b.lastPlayed) - daysSince(a.lastPlayed))[0];
+  const player = els.playerFilter.value;
+  const fitCount =
+    player === "all" ? null : state.games.filter((game) => isPlayerCountCompatible(game, Number(player))).length;
   els.gameCount.textContent = state.games.length;
   els.ruleCount.textContent = allRuleCount;
   els.staleGame.textContent = stale ? `${daysSince(stale.lastPlayed)}天` : "-";
+  els.fitLabel.textContent = player === "all" ? "人数适配" : `${player}人适配`;
+  els.fitCount.textContent = fitCount === null ? "-" : `${fitCount}款`;
 }
 
 function renderList() {
@@ -131,6 +82,12 @@ function renderList() {
     games
       .map((game) => {
         const selected = game.id === state.selectedId ? "selected" : "";
+        const range = getEffectiveRange(game);
+        const rangeText = range.valid ? `${range.min}-${range.max}人` : "人数冲突";
+        const expansionTotal = (game.expansions || []).length;
+        const expansionPill = expansionTotal
+          ? `<span class="pill exp">扩展${getEnabledExpansions(game).length}/${expansionTotal}</span>`
+          : "";
         return `
           <article class="game-card ${selected}" data-game-id="${game.id}">
             <div class="cover">
@@ -144,9 +101,10 @@ function renderList() {
             <div class="game-body">
               <h3>${escapeHtml(game.name)}</h3>
               <div class="game-meta">
-                <span class="pill">${game.minPlayers}-${game.maxPlayers}人</span>
-                <span class="pill">${game.duration}分钟</span>
+                <span class="pill">${rangeText}</span>
+                <span class="pill">${getEffectiveDuration(game)}分钟</span>
                 <span class="pill heavy">${escapeHtml(game.complexity)}</span>
+                ${expansionPill}
               </div>
             </div>
           </article>
@@ -162,6 +120,22 @@ function renderDetail() {
     return;
   }
   state.selectedId = game.id;
+
+  const range = getEffectiveRange(game);
+  const rangeText = range.valid ? `${range.min}-${range.max}人` : "人数冲突";
+  const enabledCount = getEnabledExpansions(game).length;
+  const expansionTotal = (game.expansions || []).length;
+  const player = els.playerFilter.value;
+  const fitPill =
+    player === "all"
+      ? ""
+      : isPlayerCountCompatible(game, Number(player))
+        ? `<span class="pill fit">当前${player}人·适配</span>`
+        : `<span class="pill unfit">当前${player}人·不适配</span>`;
+  const expansionNote = expansionTotal
+    ? `<p class="detail-note">扩展启用${enabledCount}/${expansionTotal} · 基础版${game.minPlayers}-${game.maxPlayers}人 / ${game.duration}分钟</p>`
+    : "";
+
   els.detailView.innerHTML = `
     <div class="quick-card">
       <div class="detail-cover">
@@ -170,16 +144,20 @@ function renderDetail() {
       <div>
         <h2>${escapeHtml(game.name)}</h2>
         <div class="game-meta">
-          <span class="pill">${game.minPlayers}-${game.maxPlayers}人</span>
-          <span class="pill">${game.duration}分钟</span>
+          <span class="pill">${rangeText}</span>
+          <span class="pill">${getEffectiveDuration(game)}分钟</span>
           <span class="pill heavy">${escapeHtml(game.complexity)}</span>
           <span class="pill">${daysSince(game.lastPlayed)}天未玩</span>
+          ${fitPill}
         </div>
+        ${expansionNote}
       </div>
       ${renderRuleSection("容易忘的规则", "forgets", game.forgets)}
       ${renderRuleSection("常见争议", "disputes", game.disputes)}
       ${renderRuleSection("开局准备", "setup", game.setup)}
       ${renderRuleSection("计分提醒", "scoring", game.scoring)}
+      ${renderExpansionSection(game)}
+      ${renderPendingSection(game)}
       <form class="add-rule" id="ruleForm">
         <select id="ruleTypeInput">
           <option value="forgets">容易忘的规则</option>
@@ -220,8 +198,109 @@ function renderRuleSection(title, key, items) {
   `;
 }
 
+function renderExpansionSection(game) {
+  const cards = (game.expansions || [])
+    .map((exp) => {
+      const disabled = exp.enabled ? "" : "disabled";
+      const statePill = exp.enabled
+        ? `<span class="pill fit">参与计算</span>`
+        : `<span class="pill unfit">已停用·不参与计算</span>`;
+      return `
+        <div class="expansion-card ${disabled}">
+          <div class="expansion-head">
+            <strong>${escapeHtml(exp.name)}</strong>
+            <div class="expansion-actions">
+              <button type="button" data-exp-toggle="${exp.id}">${exp.enabled ? "停用" : "启用"}</button>
+              <button type="button" title="移除扩展，规则转入待归类" data-exp-remove="${exp.id}">移除</button>
+            </div>
+          </div>
+          <div class="game-meta">
+            <span class="pill">${exp.minPlayers}-${exp.maxPlayers}人</span>
+            <span class="pill">+${exp.extraDuration}分钟</span>
+            ${statePill}
+          </div>
+          <ul class="rule-list">
+            ${
+              (exp.rules || [])
+                .map(
+                  (rule, index) => `
+                    <li>
+                      <span>${escapeHtml(rule)}</span>
+                      <button type="button" title="删除" data-exp-rule-del="${exp.id}" data-rule-index="${index}">×</button>
+                    </li>
+                  `
+                )
+                .join("") || `<li><span>暂无扩展规则。</span></li>`
+            }
+          </ul>
+          <form class="exp-rule-form" data-exp-id="${exp.id}">
+            <input name="expRuleText" placeholder="给这个扩展补一条规则" required />
+            <button type="submit">添加</button>
+          </form>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <section class="rule-section">
+      <h3>扩展包</h3>
+      ${cards || `<p class="empty">还没有登记扩展包。</p>`}
+      <form class="expansion-form" id="expansionForm">
+        <input id="expNameInput" placeholder="扩展名，例：奥尔良：入侵" required />
+        <div class="triple">
+          <label>
+            最少人数
+            <input id="expMinInput" type="number" min="1" max="12" value="2" required />
+          </label>
+          <label>
+            最多人数
+            <input id="expMaxInput" type="number" min="1" max="12" value="4" required />
+          </label>
+          <label>
+            增加时长
+            <input id="expDurationInput" type="number" min="0" value="30" required />
+          </label>
+        </div>
+        <button class="primary" type="submit">登记扩展包</button>
+      </form>
+    </section>
+  `;
+}
+
+function renderPendingSection(game) {
+  const items = (game.pendingRules || [])
+    .map(
+      (rule, index) => `
+        <li class="pending-item">
+          <span>${escapeHtml(rule)}</span>
+          <div class="pending-actions">
+            <select data-pending-select="${index}">
+              <option value="forgets">容易忘的规则</option>
+              <option value="disputes">常见争议</option>
+              <option value="setup">开局准备</option>
+              <option value="scoring">计分提醒</option>
+            </select>
+            <button type="button" data-pending-classify="${index}">归类</button>
+            <button type="button" title="删除" data-pending-del="${index}">×</button>
+          </div>
+        </li>
+      `
+    )
+    .join("");
+
+  return `
+    <section class="rule-section">
+      <h3>待归类（来自移除的扩展）</h3>
+      <ul class="rule-list">
+        ${items || `<li><span>暂无待归类规则。</span></li>`}
+      </ul>
+    </section>
+  `;
+}
+
 function renderAll() {
-  saveState();
+  saveState(state);
   renderSummary();
   renderList();
   renderDetail();
@@ -257,7 +336,9 @@ async function addGame(event) {
     forgets: ["本局开始前先补充容易忘的规则。"],
     disputes: [],
     setup: ["整理组件并按人数调整初始设置。"],
-    scoring: ["确认终局计分项和即时得分项。"]
+    scoring: ["确认终局计分项和即时得分项。"],
+    expansions: [],
+    pendingRules: []
   };
   state.games.unshift(game);
   state.selectedId = game.id;
@@ -295,23 +376,50 @@ els.gameList.addEventListener("click", (event) => {
 });
 
 els.detailView.addEventListener("submit", (event) => {
-  if (event.target.id !== "ruleForm") return;
   event.preventDefault();
   const game = state.games.find((item) => item.id === state.selectedId);
   if (!game) return;
-  const key = document.querySelector("#ruleTypeInput").value;
-  const text = document.querySelector("#ruleTextInput").value.trim();
-  if (!text) return;
-  game[key].push(text);
-  renderAll();
+
+  if (event.target.id === "ruleForm") {
+    const key = document.querySelector("#ruleTypeInput").value;
+    const text = document.querySelector("#ruleTextInput").value.trim();
+    if (!text) return;
+    game[key].push(text);
+    renderAll();
+  }
+
+  if (event.target.id === "expansionForm") {
+    const name = document.querySelector("#expNameInput").value.trim();
+    const minPlayers = Number(document.querySelector("#expMinInput").value);
+    const maxPlayers = Math.max(minPlayers, Number(document.querySelector("#expMaxInput").value));
+    const extraDuration = Math.max(0, Number(document.querySelector("#expDurationInput").value));
+    if (!name) return;
+    game.expansions.push(createExpansion(name, minPlayers, maxPlayers, extraDuration));
+    renderAll();
+  }
+
+  if (event.target.matches(".exp-rule-form")) {
+    const expansion = (game.expansions || []).find((exp) => exp.id === event.target.dataset.expId);
+    const input = event.target.querySelector("input[name='expRuleText']");
+    const text = input.value.trim();
+    if (!expansion || !text) return;
+    expansion.rules.push(text);
+    renderAll();
+  }
 });
 
 els.detailView.addEventListener("click", (event) => {
+  const game = state.games.find((item) => item.id === state.selectedId);
+  if (!game) return;
+
   const ruleButton = event.target.closest("[data-rule-key]");
   const playedButton = event.target.closest("#playedTodayBtn");
   const deleteButton = event.target.closest("#deleteGameBtn");
-  const game = state.games.find((item) => item.id === state.selectedId);
-  if (!game) return;
+  const toggleButton = event.target.closest("[data-exp-toggle]");
+  const removeButton = event.target.closest("[data-exp-remove]");
+  const expRuleButton = event.target.closest("[data-exp-rule-del]");
+  const classifyButton = event.target.closest("[data-pending-classify]");
+  const pendingDelButton = event.target.closest("[data-pending-del]");
 
   if (ruleButton) {
     const key = ruleButton.dataset.ruleKey;
@@ -328,6 +436,39 @@ els.detailView.addEventListener("click", (event) => {
   if (deleteButton) {
     state.games = state.games.filter((item) => item.id !== game.id);
     state.selectedId = state.games[0]?.id || "";
+    renderAll();
+  }
+
+  if (toggleButton) {
+    const expansion = (game.expansions || []).find((exp) => exp.id === toggleButton.dataset.expToggle);
+    if (expansion) expansion.enabled = !expansion.enabled;
+    renderAll();
+  }
+
+  if (removeButton) {
+    retireExpansion(game, removeButton.dataset.expRemove);
+    renderAll();
+  }
+
+  if (expRuleButton) {
+    const expansion = (game.expansions || []).find((exp) => exp.id === expRuleButton.dataset.expRuleDel);
+    if (expansion) expansion.rules.splice(Number(expRuleButton.dataset.ruleIndex), 1);
+    renderAll();
+  }
+
+  if (classifyButton) {
+    const index = Number(classifyButton.dataset.pendingClassify);
+    const select = document.querySelector(`[data-pending-select="${index}"]`);
+    const key = select?.value;
+    if (key && game.pendingRules[index] != null) {
+      game[key].push(game.pendingRules[index]);
+      game.pendingRules.splice(index, 1);
+    }
+    renderAll();
+  }
+
+  if (pendingDelButton) {
+    game.pendingRules.splice(Number(pendingDelButton.dataset.pendingDel), 1);
     renderAll();
   }
 });
