@@ -26,6 +26,10 @@
             <span>最久未玩</span>
             <strong id="staleGame">-</strong>
           </div>
+          <div>
+            <span id="fitLabel">当前适配</span>
+            <strong id="fitCount">-</strong>
+          </div>
         </div>
       </header>
 
@@ -38,10 +42,12 @@
           人数
           <select id="playerFilter">
             <option value="all">全部</option>
+            <option value="1">适合1人</option>
             <option value="2">适合2人</option>
             <option value="3">适合3人</option>
             <option value="4">适合4人</option>
             <option value="5">适合5人</option>
+            <option value="6">适合6人</option>
           </select>
         </label>
         <label>
@@ -121,6 +127,8 @@
       </section>
     </main>
 
+    <script src="expansion-data.js"></script>
+    <script src="expansion-core.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

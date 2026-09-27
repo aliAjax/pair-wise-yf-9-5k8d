@@ -124,7 +124,7 @@ h3 {
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(108px, 1fr));
+  grid-template-columns: repeat(4, minmax(108px, 1fr));
   gap: 10px;
 }
 
@@ -282,6 +282,25 @@ label {
   color: var(--lavender);
 }
 
+.pill.fit {
+  background: rgba(57, 116, 91, 0.14);
+  color: var(--green);
+}
+
+.pill.unfit,
+.pill.warn {
+  background: rgba(179, 72, 72, 0.12);
+  color: var(--red);
+}
+
+.base-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .detail-panel {
   position: sticky;
   top: 18px;
@@ -334,6 +353,7 @@ label {
 
 .rule-list li {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   border-bottom: 1px solid #eef0f2;
@@ -352,6 +372,77 @@ label {
   height: 30px;
   padding: 0;
   flex: 0 0 auto;
+}
+
+.rule-list select {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 5px 6px;
+  font-size: 12px;
+}
+
+.expansion-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.expansion-item.disabled {
+  opacity: 0.62;
+  background: #f4f5f3;
+}
+
+.expansion-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.expansion-head strong {
+  margin-right: auto;
+  font-size: 14px;
+}
+
+.expansion-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.expansion-actions button {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.exp-rule-form {
+  display: flex;
+  gap: 6px;
+}
+
+.exp-rule-form input {
+  flex: 1;
+}
+
+.exp-rule-form button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+}
+
+.expansion-form {
+  display: grid;
+  gap: 8px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.expansion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
 }
 
 .add-rule {
